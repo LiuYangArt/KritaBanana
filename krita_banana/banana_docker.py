@@ -128,6 +128,11 @@ class BananaDocker(DockWidget):
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
 
+        # Test Import Button (Temporary)
+        self.btn_test_import = QPushButton("Test Import")
+        self.btn_test_import.clicked.connect(self.test_import_image)
+        layout.addWidget(self.btn_test_import)
+
     def refresh_presets_combo(self):
         current = self.presets_combo.currentText()
         self.presets_combo.blockSignals(True)
@@ -319,6 +324,13 @@ class BananaDocker(DockWidget):
         )
         self.worker.finished.connect(self.on_generation_finished)
         self.worker.start()
+
+    def test_import_image(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Image to Import", "", "Images (*.png *.jpg *.jpeg *.webp)"
+        )
+        if file_path:
+            self.import_image_to_krita(file_path)
 
     def on_generation_finished(self, success, result):
         self.btn_generate.setEnabled(True)
