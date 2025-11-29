@@ -9,6 +9,8 @@ class SettingsManager:
             "debug_mode": False,
             "save_generated_images": False,
             "selected_provider": None,
+            "webp_quality": 80,
+            "input_max_size": 2048,
         }
         self.load()
 

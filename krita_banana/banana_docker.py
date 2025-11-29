@@ -6,14 +6,24 @@ from .settings import SettingsManager
 from .providers import ProviderManager
 from .presets import PresetManager
 from .generator import ImageGenerator
+from .generator import ImageGenerator
 import threading
+import os
+from datetime import datetime
 
 
 class GenerationWorker(QThread):
     finished = pyqtSignal(bool, str)
 
     def __init__(
-        self, generator, prompt, provider, resolution, aspect_ratio, debug_mode
+        self,
+        generator,
+        prompt,
+        provider,
+        resolution,
+        aspect_ratio,
+        debug_mode,
+        input_image_path=None,
     ):
         super().__init__()
         self.generator = generator
@@ -22,6 +32,7 @@ class GenerationWorker(QThread):
         self.resolution = resolution
         self.aspect_ratio = aspect_ratio
         self.debug_mode = debug_mode
+        self.input_image_path = input_image_path
 
     def run(self):
         success, result = self.generator.generate_image(
@@ -30,6 +41,7 @@ class GenerationWorker(QThread):
             self.resolution,
             self.aspect_ratio,
             debug_mode=self.debug_mode,
+            input_image_path=self.input_image_path,
         )
         self.finished.emit(success, result)
 
@@ -100,6 +112,9 @@ class BananaDocker(DockWidget):
         preset_actions_layout.addWidget(self.btn_preset_del)
         layout.addLayout(preset_actions_layout)
 
+        preset_actions_layout.addWidget(self.btn_preset_del)
+        layout.addLayout(preset_actions_layout)
+
         # Prompt Input
         prompt_label = QLabel("Prompt:")
         layout.addWidget(prompt_label)
@@ -108,6 +123,15 @@ class BananaDocker(DockWidget):
             "Enter your image generation prompt here..."
         )
         layout.addWidget(self.prompt_input)
+
+        # Mode Selection
+        mode_layout = QHBoxLayout()
+        mode_label = QLabel("Mode:")
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Text to Image", "Image Edit"])
+        mode_layout.addWidget(mode_label)
+        mode_layout.addWidget(self.mode_combo, 1)
+        layout.addLayout(mode_layout)
 
         # Resolution Selector
         res_layout = QHBoxLayout()
@@ -131,6 +155,7 @@ class BananaDocker(DockWidget):
         # Test Import Button (Temporary)
         self.btn_test_import = QPushButton("Test Import")
         self.btn_test_import.clicked.connect(self.test_import_image)
+        self.btn_test_import.setVisible(False)
         layout.addWidget(self.btn_test_import)
 
     def refresh_presets_combo(self):
@@ -296,6 +321,43 @@ class BananaDocker(DockWidget):
         except Exception as e:
             print(f"Failed to create layer: {e}")
 
+    def capture_canvas_image(self, max_size, quality):
+        doc = Krita.instance().activeDocument()
+        if not doc:
+            return None
+
+        try:
+            # Get flattened image using thumbnail method which returns QImage
+            # This handles color space conversion automatically
+            width = doc.width()
+            height = doc.height()
+            img = doc.thumbnail(width, height)
+
+            # Resize if needed
+            if width > max_size or height > max_size:
+                img = img.scaled(
+                    max_size, max_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
+
+            # Save to temp file
+            import tempfile
+
+            temp_dir = os.path.join(os.getenv("LOCALAPPDATA"), "Krita_Banana", "temp")
+            if not os.path.exists(temp_dir):
+                os.makedirs(temp_dir)
+
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            filename = f"canvas_capture_{timestamp}.webp"
+            file_path = os.path.join(temp_dir, filename)
+
+            # Save
+            img.save(file_path, "WEBP", quality)
+            return file_path
+
+        except Exception as e:
+            print(f"Error capturing canvas: {e}")
+            return None
+
     def start_generation(self):
         prompt = self.prompt_input.toPlainText().strip()
         if not prompt:
@@ -310,6 +372,22 @@ class BananaDocker(DockWidget):
         resolution = self.res_combo.currentText()
         aspect_ratio = self.get_aspect_ratio()
         debug_mode = self.chk_debug.isChecked()
+        mode = self.mode_combo.currentText()
+
+        input_image_path = None
+        if mode == "Image Edit":
+            # Capture canvas
+            max_size = self.settings_manager.get("input_max_size", 2048)
+            quality = self.settings_manager.get("webp_quality", 80)
+
+            self.status_label.setText("Capturing canvas...")
+            QApplication.processEvents()
+
+            input_image_path = self.capture_canvas_image(max_size, quality)
+            if not input_image_path:
+                QMessageBox.warning(self, "Error", "Failed to capture canvas image.")
+                self.status_label.setText("Error")
+                return
 
         self.btn_generate.setEnabled(False)
         self.status_label.setText(f"Generating ({resolution}, {aspect_ratio})...")
@@ -321,6 +399,7 @@ class BananaDocker(DockWidget):
             resolution,
             aspect_ratio,
             debug_mode,
+            input_image_path,
         )
         self.worker.finished.connect(self.on_generation_finished)
         self.worker.start()
@@ -414,6 +493,32 @@ class BananaDocker(DockWidget):
                 "save_generated_images", self.chk_save_images.isChecked()
             )
         )
+
+        # WebP Settings
+        webp_layout = QHBoxLayout()
+
+        self.input_webp_quality = QSpinBox()
+        self.input_webp_quality.setRange(0, 100)
+        self.input_webp_quality.setValue(self.settings_manager.get("webp_quality", 80))
+        self.input_webp_quality.setPrefix("WebP Quality: ")
+
+        self.input_max_size = QSpinBox()
+        self.input_max_size.setRange(512, 4096)
+        self.input_max_size.setValue(self.settings_manager.get("input_max_size", 2048))
+        self.input_max_size.setPrefix("Max Size: ")
+        self.input_max_size.setSingleStep(128)
+
+        # Connect signals
+        self.input_webp_quality.valueChanged.connect(
+            lambda v: self.settings_manager.set("webp_quality", v)
+        )
+        self.input_max_size.valueChanged.connect(
+            lambda v: self.settings_manager.set("input_max_size", v)
+        )
+
+        webp_layout.addWidget(self.input_webp_quality)
+        webp_layout.addWidget(self.input_max_size)
+        layout.addLayout(webp_layout)
 
         layout.addWidget(self.chk_debug)
         layout.addWidget(self.chk_save_images)
