@@ -1,4 +1,5 @@
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QImage
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from krita import *
 from .settings import SettingsManager
@@ -258,14 +259,37 @@ class BananaDocker(DockWidget):
         layer_name = f"BananaImage{next_idx:02d}"
 
         try:
-            # Attempt to create a file layer
-            layer = doc.createFileLayer(layer_name, file_path, "None", "None")
-            if layer:
-                root.addChildNode(layer, None)
-                doc.refreshProjection()
+            # Load image using QImage
+            img = QImage(file_path)
+            if img.isNull():
+                print(f"Failed to load image: {file_path}")
                 return
+
+            # Resize to canvas size
+            doc_width = doc.width()
+            doc_height = doc.height()
+            img = img.scaled(
+                doc_width, doc_height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation
+            )
+
+            # Convert to RGBA8888
+            img = img.convertToFormat(QImage.Format_RGBA8888)
+
+            # Get raw data
+            ptr = img.bits()
+            ptr.setsize(img.byteCount())
+            data = ptr.asstring()
+
+            # Create paint layer
+            layer = doc.createNode(layer_name, "paintlayer")
+            layer.setPixelData(data, 0, 0, doc_width, doc_height)
+
+            root.addChildNode(layer, None)
+            doc.refreshProjection()
+            return
+
         except Exception as e:
-            print(f"Failed to create file layer: {e}")
+            print(f"Failed to create layer: {e}")
 
     def start_generation(self):
         prompt = self.prompt_input.toPlainText().strip()
