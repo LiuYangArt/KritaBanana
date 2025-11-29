@@ -134,6 +134,7 @@ class BananaDocker(DockWidget):
         mode_label = QLabel("Mode:")
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["Text to Image", "Image Edit"])
+        self.mode_combo.setCurrentText("Image Edit")
         mode_layout.addWidget(mode_label)
         mode_layout.addWidget(self.mode_combo, 1)
         layout.addLayout(mode_layout)
