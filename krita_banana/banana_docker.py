@@ -79,6 +79,11 @@ class BananaDocker(DockWidget):
         self.setup_settings_tab()
         self.tabs.addTab(self.settings_tab, "Settings")
 
+        # Utilities Tab
+        self.utilities_tab = QWidget()
+        self.setup_utilities_tab()
+        self.tabs.addTab(self.utilities_tab, "Utilities")
+
     def setup_generate_tab(self):
         layout = QVBoxLayout()
         self.generate_tab.setLayout(layout)
@@ -423,6 +428,113 @@ class BananaDocker(DockWidget):
         else:
             self.status_label.setText("Error")
             QMessageBox.warning(self, "Error", f"Generation failed:\n{result}")
+
+    def setup_utilities_tab(self):
+        layout = QVBoxLayout()
+        self.utilities_tab.setLayout(layout)
+
+        # Canvas Tools Group
+        canvas_group = QGroupBox("Canvas Tools")
+        canvas_layout = QVBoxLayout()
+        canvas_group.setLayout(canvas_layout)
+
+        # Aspect Ratios Label
+        ratios_label = QLabel("Nano Banana Pro Aspect Ratios:")
+        canvas_layout.addWidget(ratios_label)
+
+        ratios_list = QLabel("1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9")
+        ratios_list.setWordWrap(True)
+        canvas_layout.addWidget(ratios_list)
+
+        # Smart Resize Button
+        self.btn_smart_resize = QPushButton("Smart Resize Canvas")
+        self.btn_smart_resize.clicked.connect(self.smart_resize_canvas)
+        canvas_layout.addWidget(self.btn_smart_resize)
+
+        layout.addWidget(canvas_group)
+        layout.addStretch()
+
+    def smart_resize_canvas(self):
+        doc = Krita.instance().activeDocument()
+        if not doc:
+            QMessageBox.warning(self, "Error", "No active document.")
+            return
+
+        width = doc.width()
+        height = doc.height()
+        current_ratio = width / height
+
+        # Supported Ratios (Ordered as requested)
+        ratios = [
+            ("1:1", 1.0),
+            ("2:3", 2 / 3),
+            ("3:2", 3 / 2),
+            ("3:4", 3 / 4),
+            ("4:3", 4 / 3),
+            ("4:5", 4 / 5),
+            ("5:4", 5 / 4),
+            ("9:16", 9 / 16),
+            ("16:9", 16 / 9),
+            ("21:9", 21 / 9),
+        ]
+
+        # Find closest ratio
+        best_ratio_name = "1:1"
+        best_ratio_val = 1.0
+        min_diff = float("inf")
+
+        for name, val in ratios:
+            diff = abs(current_ratio - val)
+            if diff < min_diff:
+                min_diff = diff
+                best_ratio_name = name
+                best_ratio_val = val
+
+        # Calculate new dimensions
+        # Logic: Keep long edge, adjust short edge
+        new_width = width
+        new_height = height
+
+        if best_ratio_val >= 1:
+            # Target is Landscape or Square
+            if width >= height:
+                # Current is Landscape/Square -> Keep Width (Long), Adjust Height
+                new_width = width
+                new_height = int(round(width / best_ratio_val))
+            else:
+                # Current is Portrait, Target is Landscape
+                # Long edge is Height.
+                # If we keep Height (Long), NewWidth = Height * TargetRatio
+                new_height = height
+                new_width = int(round(height * best_ratio_val))
+        else:
+            # Target is Portrait (Ratio < 1)
+            if height >= width:
+                # Current is Portrait/Square -> Keep Height (Long), Adjust Width
+                new_height = height
+                new_width = int(round(height * best_ratio_val))
+            else:
+                # Current is Landscape, Target is Portrait
+                # Long edge is Width.
+                # Keep Width. NewHeight = Width / TargetRatio
+                new_width = width
+                new_height = int(round(width / best_ratio_val))
+
+        # Resize Canvas (Not Scale Image)
+        try:
+            doc.setWidth(new_width)
+            doc.setHeight(new_height)
+            # Center the content if possible?
+            # Krita setWidth/setHeight might crop from top-left.
+            # For now, we stick to basic resizing as requested.
+
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Resized to {best_ratio_name} ({new_width}x{new_height})",
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to resize: {e}")
 
     def setup_settings_tab(self):
         layout = QVBoxLayout()
