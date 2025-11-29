@@ -49,7 +49,7 @@ class GenerationWorker(QThread):
 class BananaDocker(DockWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Krita Banana by LiuYang")
+        self.setWindowTitle("🍌Krita Banana")
 
         # Managers
         self.settings_manager = SettingsManager()
