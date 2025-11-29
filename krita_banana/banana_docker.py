@@ -1,18 +1,42 @@
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt
 from krita import *
+from krita import *
 from .settings import SettingsManager
 from .providers import ProviderManager
+from .presets import PresetManager
+from .generator import ImageGenerator
+import threading
+
+
+class GenerationWorker(QThread):
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, generator, prompt, provider, resolution, debug_mode):
+        super().__init__()
+        self.generator = generator
+        self.prompt = prompt
+        self.provider = provider
+        self.resolution = resolution
+        self.debug_mode = debug_mode
+
+    def run(self):
+        success, result = self.generator.generate_image(
+            self.prompt, self.provider, self.resolution, debug_mode=self.debug_mode
+        )
+        self.finished.emit(success, result)
 
 
 class BananaDocker(DockWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Krita Banana")
+        self.setWindowTitle("Krita Banana by LiuYang")
 
         # Managers
         self.settings_manager = SettingsManager()
         self.provider_manager = ProviderManager()
+        self.preset_manager = PresetManager()
+        self.image_generator = ImageGenerator(self.provider_manager)
 
         # Main Widget
         mainWidget = QWidget(self)
@@ -40,12 +64,156 @@ class BananaDocker(DockWidget):
         layout = QVBoxLayout()
         self.generate_tab.setLayout(layout)
 
-        # Placeholder for now
-        self.testButton = QPushButton(
-            "Test Generation (Placeholder)", self.generate_tab
+        # Prompt Presets Area
+        presets_layout = QHBoxLayout()
+        presets_label = QLabel("Presets:")
+        self.presets_combo = QComboBox()
+        self.refresh_presets_combo()
+        self.presets_combo.currentIndexChanged.connect(self.load_preset_prompt)
+
+        presets_layout.addWidget(presets_label)
+        presets_layout.addWidget(self.presets_combo, 1)  # Stretch factor 1
+        layout.addLayout(presets_layout)
+
+        # Preset Actions
+        preset_actions_layout = QHBoxLayout()
+        self.btn_preset_add = QPushButton("+")
+        self.btn_preset_save = QPushButton("Save")
+        self.btn_preset_rename = QPushButton("Rename")
+        self.btn_preset_del = QPushButton("Del")
+
+        self.btn_preset_add.clicked.connect(self.add_preset)
+        self.btn_preset_save.clicked.connect(self.save_preset)
+        self.btn_preset_rename.clicked.connect(self.rename_preset)
+        self.btn_preset_del.clicked.connect(self.delete_preset)
+
+        preset_actions_layout.addWidget(self.btn_preset_add)
+        preset_actions_layout.addWidget(self.btn_preset_save)
+        preset_actions_layout.addWidget(self.btn_preset_rename)
+        preset_actions_layout.addWidget(self.btn_preset_del)
+        layout.addLayout(preset_actions_layout)
+
+        # Prompt Input
+        prompt_label = QLabel("Prompt:")
+        layout.addWidget(prompt_label)
+        self.prompt_input = QTextEdit()
+        self.prompt_input.setPlaceholderText(
+            "Enter your image generation prompt here..."
         )
-        layout.addWidget(self.testButton)
-        layout.addStretch()
+        layout.addWidget(self.prompt_input)
+
+        # Generate Button
+        self.btn_generate = QPushButton("Generate Image")
+        self.btn_generate.clicked.connect(self.start_generation)
+        layout.addWidget(self.btn_generate)
+
+        # Status Label
+        self.status_label = QLabel("")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.status_label)
+
+    def refresh_presets_combo(self):
+        current = self.presets_combo.currentText()
+        self.presets_combo.blockSignals(True)
+        self.presets_combo.clear()
+        names = self.preset_manager.get_all_names()
+        self.presets_combo.addItems(names)
+
+        if current in names:
+            self.presets_combo.setCurrentText(current)
+
+        self.presets_combo.blockSignals(False)
+
+    def load_preset_prompt(self):
+        name = self.presets_combo.currentText()
+        if not name:
+            return
+        prompt = self.preset_manager.get_prompt(name)
+        self.prompt_input.setText(prompt)
+
+    def add_preset(self):
+        name, ok = QInputDialog.getText(self, "New Preset", "Enter preset name:")
+        if ok and name:
+            prompt = self.prompt_input.toPlainText()
+            success, msg = self.preset_manager.add_preset(name, prompt)
+            if success:
+                self.refresh_presets_combo()
+                self.presets_combo.setCurrentText(name)
+            else:
+                QMessageBox.warning(self, "Error", msg)
+
+    def save_preset(self):
+        name = self.presets_combo.currentText()
+        if not name:
+            return
+        prompt = self.prompt_input.toPlainText()
+        success, msg = self.preset_manager.update_preset(name, prompt)
+        QMessageBox.information(self, "Info", msg)
+
+    def rename_preset(self):
+        old_name = self.presets_combo.currentText()
+        if not old_name:
+            return
+        new_name, ok = QInputDialog.getText(
+            self, "Rename Preset", "Enter new name:", text=old_name
+        )
+        if ok and new_name:
+            success, msg = self.preset_manager.rename_preset(old_name, new_name)
+            if success:
+                self.refresh_presets_combo()
+                self.presets_combo.setCurrentText(new_name)
+            else:
+                QMessageBox.warning(self, "Error", msg)
+
+    def delete_preset(self):
+        name = self.presets_combo.currentText()
+        if not name:
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Delete preset '{name}'?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm == QMessageBox.Yes:
+            success, msg = self.preset_manager.delete_preset(name)
+            if success:
+                self.refresh_presets_combo()
+                self.prompt_input.clear()
+
+    def start_generation(self):
+        prompt = self.prompt_input.toPlainText().strip()
+        if not prompt:
+            QMessageBox.warning(self, "Error", "Please enter a prompt.")
+            return
+
+        provider_name = self.provider_combo.currentText()
+        if not provider_name:
+            QMessageBox.warning(self, "Error", "Please select a provider.")
+            return
+
+        # TODO: Add resolution selector to UI, for now default to 1K or use a setting
+        resolution = "1K"
+        debug_mode = self.chk_debug.isChecked()
+
+        self.btn_generate.setEnabled(False)
+        self.status_label.setText("Generating...")
+
+        self.worker = GenerationWorker(
+            self.image_generator, prompt, provider_name, resolution, debug_mode
+        )
+        self.worker.finished.connect(self.on_generation_finished)
+        self.worker.start()
+
+    def on_generation_finished(self, success, result):
+        self.btn_generate.setEnabled(True)
+        if success:
+            self.status_label.setText("Done!")
+            # Result is the file path
+            QMessageBox.information(self, "Success", f"Image saved to:\n{result}")
+        else:
+            self.status_label.setText("Error")
+            QMessageBox.warning(self, "Error", f"Generation failed:\n{result}")
 
     def setup_settings_tab(self):
         layout = QVBoxLayout()
