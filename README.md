@@ -1,11 +1,15 @@
+# Krita 中调用Google nano banana pro生图的插件
+
+- 第三方api
+- 支持文生图/图生图模式
+- prompt 预设管理
+<img width="587" height="658" alt="image" src="https://github.com/user-attachments/assets/b3674e46-177d-4290-ba43-bee5662fcbee" />
 
 
-
-
-#插件下载
+## 插件下载
 [https://github.com/LiuYangArt/KritaBanana/blob/main/Plugin/KritaBanana.zip](https://github.com/LiuYangArt/KritaBanana/blob/main/Plugin/KritaBanana.zip)
 
-#插件安装
+## 插件安装
 - 在菜单选择
 <img width="565" height="353" alt="image" src="https://github.com/user-attachments/assets/093d8a6e-ffc6-4d52-99bc-4f50fb6fa03d" />
 - 或手动复制
