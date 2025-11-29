@@ -33,6 +33,7 @@ class ImageGenerator:
         prompt,
         provider_name,
         resolution="1K",
+        aspect_ratio="1:1",
         search_web=False,
         debug_mode=False,
         input_image_path=None,
@@ -98,7 +99,7 @@ class ImageGenerator:
 
             messages = [{"role": "user", "content": content}]
 
-            image_config = {"aspect_ratio": "1:1"}
+            image_config = {"aspect_ratio": aspect_ratio}
 
             if resolution == "1K":
                 image_config["image_size"] = "1K"
@@ -122,7 +123,7 @@ class ImageGenerator:
 
             generation_config = {
                 "response_modalities": ["IMAGE"],
-                "image_config": {"aspect_ratio": "1:1"},
+                "image_config": {"aspect_ratio": aspect_ratio},
             }
 
             if resolution:
@@ -168,6 +169,10 @@ class ImageGenerator:
 
             messages = [{"role": "user", "content": content_list}]
 
+            # Fallback for aspect ratio in prompt if not 1:1
+            if aspect_ratio != "1:1":
+                messages[0]["content"][0]["text"] += f" --aspect-ratio {aspect_ratio}"
+
             payload = {"model": actual_model, "messages": messages, "stream": False}
 
         else:
@@ -178,7 +183,7 @@ class ImageGenerator:
 
             generation_config = {
                 "responseModalities": ["image"],
-                "imageConfig": {"aspectRatio": "1:1"},
+                "imageConfig": {"aspectRatio": aspect_ratio},
             }
 
             if resolution:
@@ -205,6 +210,7 @@ class ImageGenerator:
                 api_url,
                 provider_name,
                 resolution,
+                aspect_ratio,
                 is_gptgod,
                 is_openrouter,
                 is_google_official,
@@ -245,6 +251,7 @@ class ImageGenerator:
         api_url,
         provider_name,
         resolution,
+        aspect_ratio,
         is_gptgod,
         is_openrouter,
         is_google_official,
@@ -252,6 +259,8 @@ class ImageGenerator:
         print(f"--- DEBUG MODE ENABLED ---")
         print(f"Output Directory: {self.output_dir}")
         print(f"Provider: {provider_name}")
+        print(f"Resolution: {resolution}")
+        print(f"Aspect Ratio: {aspect_ratio}")
         print(f"URL: {api_url}")
 
         log_payload = json.loads(json.dumps(payload))

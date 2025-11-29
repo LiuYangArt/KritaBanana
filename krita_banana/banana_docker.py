@@ -1,6 +1,5 @@
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt
-from krita import *
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from krita import *
 from .settings import SettingsManager
 from .providers import ProviderManager
@@ -12,17 +11,24 @@ import threading
 class GenerationWorker(QThread):
     finished = pyqtSignal(bool, str)
 
-    def __init__(self, generator, prompt, provider, resolution, debug_mode):
+    def __init__(
+        self, generator, prompt, provider, resolution, aspect_ratio, debug_mode
+    ):
         super().__init__()
         self.generator = generator
         self.prompt = prompt
         self.provider = provider
         self.resolution = resolution
+        self.aspect_ratio = aspect_ratio
         self.debug_mode = debug_mode
 
     def run(self):
         success, result = self.generator.generate_image(
-            self.prompt, self.provider, self.resolution, debug_mode=self.debug_mode
+            self.prompt,
+            self.provider,
+            self.resolution,
+            self.aspect_ratio,
+            debug_mode=self.debug_mode,
         )
         self.finished.emit(success, result)
 
@@ -101,6 +107,15 @@ class BananaDocker(DockWidget):
             "Enter your image generation prompt here..."
         )
         layout.addWidget(self.prompt_input)
+
+        # Resolution Selector
+        res_layout = QHBoxLayout()
+        res_label = QLabel("Resolution:")
+        self.res_combo = QComboBox()
+        self.res_combo.addItems(["1K", "2K", "4K"])
+        res_layout.addWidget(res_label)
+        res_layout.addWidget(self.res_combo)
+        layout.addLayout(res_layout)
 
         # Generate Button
         self.btn_generate = QPushButton("Generate Image")
@@ -181,6 +196,77 @@ class BananaDocker(DockWidget):
                 self.refresh_presets_combo()
                 self.prompt_input.clear()
 
+    def get_aspect_ratio(self):
+        doc = Krita.instance().activeDocument()
+        if not doc:
+            return "1:1"
+
+        width = doc.width()
+        height = doc.height()
+
+        # Calculate ratio
+        ratio = width / height
+
+        # Standard ratios
+        ratios = {
+            "1:1": 1.0,
+            "2:3": 2 / 3,
+            "3:2": 3 / 2,
+            "3:4": 3 / 4,
+            "4:3": 4 / 3,
+            "4:5": 4 / 5,
+            "5:4": 5 / 4,
+            "9:16": 9 / 16,
+            "16:9": 16 / 9,
+            "21:9": 21 / 9,
+        }
+
+        # Find closest
+        closest_ratio = "1:1"
+        min_diff = float("inf")
+
+        for r_name, r_val in ratios.items():
+            diff = abs(ratio - r_val)
+            if diff < min_diff:
+                min_diff = diff
+                closest_ratio = r_name
+
+        return closest_ratio
+
+    def import_image_to_krita(self, file_path):
+        doc = Krita.instance().activeDocument()
+        if not doc:
+            return
+
+        # Find next available name
+        root = doc.rootNode()
+        childNodes = root.childNodes()
+        existing_indices = []
+        for node in childNodes:
+            name = node.name()
+            if name.startswith("BananaImage"):
+                try:
+                    idx = int(name.replace("BananaImage", ""))
+                    existing_indices.append(idx)
+                except ValueError:
+                    pass
+
+        next_idx = 0
+        if existing_indices:
+            next_idx = max(existing_indices) + 1
+
+        layer_name = f"BananaImage{next_idx:02d}"
+
+        try:
+            # Attempt to create a file layer
+            layer = doc.createFileLayer(layer_name, file_path, "None", "None")
+            if layer:
+                root.addChildNode(layer, None)
+                doc.refreshProjection()
+                return
+        except Exception as e:
+            print(f"Failed to create file layer: {e}")
+
     def start_generation(self):
         prompt = self.prompt_input.toPlainText().strip()
         if not prompt:
@@ -192,15 +278,20 @@ class BananaDocker(DockWidget):
             QMessageBox.warning(self, "Error", "Please select a provider.")
             return
 
-        # TODO: Add resolution selector to UI, for now default to 1K or use a setting
-        resolution = "1K"
+        resolution = self.res_combo.currentText()
+        aspect_ratio = self.get_aspect_ratio()
         debug_mode = self.chk_debug.isChecked()
 
         self.btn_generate.setEnabled(False)
-        self.status_label.setText("Generating...")
+        self.status_label.setText(f"Generating ({resolution}, {aspect_ratio})...")
 
         self.worker = GenerationWorker(
-            self.image_generator, prompt, provider_name, resolution, debug_mode
+            self.image_generator,
+            prompt,
+            provider_name,
+            resolution,
+            aspect_ratio,
+            debug_mode,
         )
         self.worker.finished.connect(self.on_generation_finished)
         self.worker.start()
@@ -209,8 +300,11 @@ class BananaDocker(DockWidget):
         self.btn_generate.setEnabled(True)
         if success:
             self.status_label.setText("Done!")
-            # Result is the file path
-            QMessageBox.information(self, "Success", f"Image saved to:\n{result}")
+            # Import to Krita
+            self.import_image_to_krita(result)
+            QMessageBox.information(
+                self, "Success", f"Image saved to:\n{result}\nAnd imported as layer."
+            )
         else:
             self.status_label.setText("Error")
             QMessageBox.warning(self, "Error", f"Generation failed:\n{result}")
