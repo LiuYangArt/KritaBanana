@@ -272,8 +272,8 @@ class BananaDocker(DockWidget):
                 doc_width, doc_height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation
             )
 
-            # Convert to RGBA8888
-            img = img.convertToFormat(QImage.Format_RGBA8888)
+            # Convert to ARGB32 (Krita usually expects BGRA on Windows/Little Endian)
+            img = img.convertToFormat(QImage.Format_ARGB32)
 
             # Get raw data
             ptr = img.bits()
