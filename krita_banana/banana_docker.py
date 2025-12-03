@@ -301,11 +301,11 @@ class BananaDocker(DockWidget):
                 print(f"Failed to load image: {file_path}")
                 return
 
-            # Resize to canvas size
+            # Resize to match document height (keep aspect ratio)
             doc_width = doc.width()
             doc_height = doc.height()
-            img = img.scaled(
-                doc_width, doc_height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation
+            img = img.scaledToHeight(
+                doc_height, Qt.SmoothTransformation
             )
 
             # Convert to ARGB32 (Krita usually expects BGRA on Windows/Little Endian)
@@ -318,7 +318,7 @@ class BananaDocker(DockWidget):
 
             # Create paint layer
             layer = doc.createNode(layer_name, "paintlayer")
-            layer.setPixelData(data, 0, 0, doc_width, doc_height)
+            layer.setPixelData(data, 0, 0, img.width(), img.height())
 
             root.addChildNode(layer, None)
             doc.refreshProjection()
