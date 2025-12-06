@@ -24,3 +24,12 @@
 - 需自行购买api
 - 在Settings页面填入API。目前只在yunwu/gptgod/openrouter测试过，google 官方的API我这边没有条件测。openrouter对ip也有限制。
   [yunwu](https://yunwu.ai/register?aff=VE3i) | [gptgod](https://gptgod.site/#/register?invite_code=5ax35dxlk4bys0j7jnzqypwkc)
+
+
+## 免责声明
+本插件功能依赖第三方 API 服务。在使用过程中，您的数据（包括但不限于图片、提示词）将被发送至第三方服务器进行处理。开发者不对第三方服务的数据安全性、隐私保护或服务稳定性承担任何责任。请勿上传包含敏感个人信息的内容，使用本插件产生的任何数据泄露风险由用户自行承担。
+
+--- 
+
+## Disclaimer
+This plugin relies on third-party API services. Please be aware that your data (including but not limited to images and prompts) will be transmitted to external servers for processing. The developer assumes no liability for data security, privacy leaks, or service stability regarding these third-party providers. Please do not upload sensitive personal information; users assume all risks associated with data privacy when using this plugin.
